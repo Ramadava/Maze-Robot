@@ -312,6 +312,7 @@ def printMaze():
         print(_row)
 
 
+maze = Maze()
 while True:
     # testing run loop: pycharm only.
     task = input("--> ").split()
