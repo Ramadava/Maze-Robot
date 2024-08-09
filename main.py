@@ -75,6 +75,7 @@ class Wall(Enum):
     EMPTY = 0
     WALL = 1
     VICTIM = 2
+    SOMETHING = 3
 
 
 class Cell:
@@ -135,7 +136,7 @@ class Path:
                 self.cells = self.cells[:v+1]
                 self.currentCell = maze.getCell(int(self.cells[len(self.cells) - 1][0]), int(self.cells[len(self.cells) - 1][1]))
 
-                options = Maze.getOptions(_path)
+                options = Maze.getOptions(self.currentCell, _path)
                 for h in lastInstructions:
                     if int(h) in options:
                         options.remove(int(h))
@@ -189,35 +190,58 @@ class Maze:
     def setCell(self, _x, _y, color: int, northWall: int, southWall: int, eastWall: int, westWall: int, hasBeenFound: bool):
         self.cells[_y][_x] = Cell(color, [northWall, southWall, eastWall, westWall], hasBeenFound)
 
+    def setWall(self, cell_x: int, cell_y: int, wall: int, to_set: Wall):
+        if wall == 0:
+            self.cells[cell_y][cell_x].northWall = to_set
+        if wall == 1:
+            self.cells[cell_y][cell_x].eastWall = to_set
+        if wall == 2:
+            self.cells[cell_y][cell_x].southWall = to_set
+        if wall == 3:
+            self.cells[cell_y][cell_x].westWall = to_set
+
     def getSize(self) -> Tuple:
         return self.width, self.height
 
-    @staticmethod
-    def getOptions(__path: Path) -> list:
+    def getOptions(self, coordinates: tuple, __path) -> list:
+        if coordinates[0] > self.width or coordinates[1] > self.height or coordinates[0] < 0 or coordinates[1] < 0:
+            return []
+        cell = self.getCell(coordinates[0], coordinates[1])
         _options = []
-        print("checking: " + str(__path.cells[:len(__path.cells) - 1]) + " this is what checking for: " + str((int(__path.cells[len(__path.cells) - 1][0]), int(__path.cells[len(__path.cells) - 1][1]) - 1)))
-        if __path.currentCell.northWall == Wall.EMPTY and not __path.cells[:len(__path.cells) - 1].__contains__((__path.cells[len(__path.cells) - 1][0], int(__path.cells[len(__path.cells) - 1][1]) - 1)):
-            if len(__path.instructions) > 0 and __path.instructions[len(__path.instructions) - 1] != "2" and __path.instructions[len(__path.instructions) - 1] != "X2":
+        if __path is not None:
+            print("checking: " + str(__path.cells[:len(__path.cells) - 1]) + " this is what checking for: " + str((int(__path.cells[len(__path.cells) - 1][0]), int(__path.cells[len(__path.cells) - 1][1]) - 1)))
+            if cell.northWall == Wall.EMPTY and not __path.cells[:len(__path.cells) - 1].__contains__((__path.cells[len(__path.cells) - 1][0], int(__path.cells[len(__path.cells) - 1][1]) - 1)):
+                if len(__path.instructions) > 0 and __path.instructions[len(__path.instructions) - 1] != "2" and __path.instructions[len(__path.instructions) - 1] != "X2":
+                    _options.append(0)
+                elif len(__path.instructions) == 0:
+                    _options.append(0)
+            if cell.southWall == Wall.EMPTY and not __path.cells[:len(__path.cells) - 1].__contains__((__path.cells[len(__path.cells) - 1][0], int(__path.cells[len(__path.cells) - 1][1]) + 1)):
+                if len(__path.instructions) > 0 and __path.instructions[len(__path.instructions) - 1] != "0" and __path.instructions[len(__path.instructions) - 1] != "X0":
+                    _options.append(2)
+                elif len(__path.instructions) == 0:
+                    _options.append(2)
+            if cell.eastWall == Wall.EMPTY and not __path.cells[:len(__path.cells) - 1].__contains__((int(__path.cells[len(__path.cells) - 1][0]) + 1, __path.cells[len(__path.cells) - 1][1])):
+                if len(__path.instructions) > 0 and __path.instructions[len(__path.instructions) - 1] != "3" and __path.instructions[len(__path.instructions) - 1] != "X3":
+                    _options.append(1)
+                elif len(__path.instructions) == 0:
+                    _options.append(1)
+            if cell.westWall == Wall.EMPTY and not __path.cells[:len(__path.cells) - 1].__contains__((int(__path.cells[len(__path.cells) - 1][0]) - 1, __path.cells[len(__path.cells) - 1][1])):
+                if len(__path.instructions) > 0 and __path.instructions[len(__path.instructions) - 1] != "1" and __path.instructions[len(__path.instructions) - 1] != "X1":
+                    _options.append(3)
+                elif len(__path.instructions) == 0:
+                    _options.append(3)
+
+        else:
+            if cell.northWall == Wall.EMPTY and self.height > coordinates[1] + 1:
                 _options.append(0)
-            elif len(__path.instructions) == 0:
-                _options.append(0)
-        if __path.currentCell.southWall == Wall.EMPTY and not __path.cells[:len(__path.cells) - 1].__contains__((__path.cells[len(__path.cells) - 1][0], int(__path.cells[len(__path.cells) - 1][1]) + 1)):
-            if len(__path.instructions) > 0 and __path.instructions[len(__path.instructions) - 1] != "0" and __path.instructions[len(__path.instructions) - 1] != "X0":
+            if cell.southWall == Wall.EMPTY and self.height > coordinates[1] - 1:
                 _options.append(2)
-            elif len(__path.instructions) == 0:
-                _options.append(2)
-        if __path.currentCell.eastWall == Wall.EMPTY and not __path.cells[:len(__path.cells) - 1].__contains__((int(__path.cells[len(__path.cells) - 1][0]) + 1, __path.cells[len(__path.cells) - 1][1])):
-            if len(__path.instructions) > 0 and __path.instructions[len(__path.instructions) - 1] != "3" and __path.instructions[len(__path.instructions) - 1] != "X3":
+            if cell.eastWall == Wall.EMPTY and self.width > coordinates[0] + 1:
                 _options.append(1)
-            elif len(__path.instructions) == 0:
-                _options.append(1)
-        if __path.currentCell.westWall == Wall.EMPTY and not __path.cells[:len(__path.cells) - 1].__contains__((int(__path.cells[len(__path.cells) - 1][0]) - 1, __path.cells[len(__path.cells) - 1][1])):
-            if len(__path.instructions) > 0 and __path.instructions[len(__path.instructions) - 1] != "1" and __path.instructions[len(__path.instructions) - 1] != "X1":
-                _options.append(3)
-            elif len(__path.instructions) == 0:
+            if cell.westWall == Wall.EMPTY and self.width > coordinates[0] - 1:
                 _options.append(3)
 
-        return _options
+            return _options
 
     def pathFind(self, start: tuple, end: tuple) -> Path:
         _path = Path()
@@ -270,7 +294,7 @@ class Maze:
             print("desired: " + str(desiredDirection1) + str(desiredDirection2))
             print("current cell: " + str([_path.currentCell.northWall, _path.currentCell.eastWall, _path.currentCell.southWall, _path.currentCell.westWall]))
 
-            options = self.getOptions(_path)
+            options = self.getOptions(_path.currentCell, _path)
             print("options:" + str(options))
 
             if options.__contains__(desiredDirection1) and len(options) > 1:
@@ -313,6 +337,8 @@ def printMaze():
 
 
 maze = Maze()
+location = (0, 0)
+
 while True:
     # testing run loop: pycharm only.
     task = input("--> ").split()
@@ -323,11 +349,11 @@ while True:
         printMaze()
     if task[0] == "defaultMaze":
         maze.cells = [
-            [Cell(0, [1, 1, 0, 1], True), Cell(0, [1, 0, 0, 1], True), Cell(0, [1, 0, 0, 0], True), Cell(0, [1, 0, 1, 0], True), Cell(0, [1, 0, 0, 0], True), Cell(0, [1, 0, 0, 0], True), Cell(0, [1, 0, 0, 0], True), Cell(0, [1, 1, 0, 0], True)],
-            [Cell(0, [0, 1, 0, 1], True), Cell(0, [0, 1, 1, 1], True), Cell(0, [0, 0, 1, 1], True), Cell(0, [1, 1, 0, 0], True), Cell(0, [0, 0, 0, 1], True), Cell(0, [0, 0, 0, 0], True), Cell(0, [1, 0, 1, 1], True), Cell(0, [0, 1, 0, 0], True)],
-            [Cell(0, [0, 0, 0, 1], True), Cell(0, [1, 1, 1, 0], True), Cell(0, [1, 0, 1, 1], True), Cell(0, [0, 0, 1, 0], True), Cell(0, [0, 0, 1, 0], True), Cell(0, [0, 0, 1, 0], True), Cell(0, [1, 1, 0, 0], True), Cell(0, [0, 1, 0, 1], True)],
+            [Cell(0, [1, 1, 0, 1], True), Cell(0, [1, 0, 0, 1], True), Cell(0, [1, 0, 0, 0], False), Cell(0, [1, 0, 1, 0], True), Cell(0, [1, 0, 0, 0], True), Cell(0, [1, 0, 0, 0], True), Cell(0, [1, 0, 0, 0], True), Cell(0, [1, 1, 0, 0], True)],
+            [Cell(0, [0, 1, 0, 1], True), Cell(0, [0, 1, 1, 1], False), Cell(0, [0, 0, 1, 1], True), Cell(0, [1, 1, 0, 0], True), Cell(0, [0, 0, 0, 1], True), Cell(0, [0, 0, 0, 0], True), Cell(0, [1, 0, 1, 1], True), Cell(0, [0, 1, 0, 0], True)],
+            [Cell(0, [0, 0, 0, 1], True), Cell(0, [1, 1, 1, 0], False), Cell(0, [1, 0, 1, 1], True), Cell(0, [0, 0, 1, 0], True), Cell(0, [0, 0, 1, 0], True), Cell(0, [0, 0, 1, 0], True), Cell(0, [1, 1, 0, 0], True), Cell(0, [0, 1, 0, 1], True)],
             [Cell(0, [0, 0, 0, 1], True), Cell(0, [1, 0, 0, 0], True), Cell(0, [1, 0, 0, 0], True), Cell(0, [1, 1, 0, 0], True), Cell(0, [1, 0, 0, 1], True), Cell(0, [1, 0, 0, 0], True), Cell(0, [1, 1, 0, 0], True), Cell(0, [0, 1, 0, 1], True)],
-            [Cell(0, [0, 0, 1, 1], True), Cell(0, [0, 0, 1, 0], True), Cell(0, [0, 1, 1, 0], True), Cell(0, [0, 0, 1, 1], True), Cell(0, [0, 0, 1, 0], True), Cell(0, [0, 1, 1, 0], True), Cell(0, [0, 0, 1, 1], True), Cell(0, [0, 1, 1, 0], True)]
+            [Cell(0, [0, 0, 1, 1], True), Cell(0, [0, 0, 1, 0], False), Cell(0, [0, 1, 1, 0], True), Cell(0, [0, 0, 1, 1], True), Cell(0, [0, 0, 1, 0], True), Cell(0, [0, 1, 1, 0], True), Cell(0, [0, 0, 1, 1], True), Cell(0, [0, 1, 1, 0], True)]
 
         ]
         maze.height = 8
@@ -358,6 +384,28 @@ while True:
         for i in range(len(task) - 1):
             path.append(int(task[i + 1][0]), (len(task[i + 1]) > 1 and task[i + 1][1] == "X"))
         print("Instructions before: " + str(path.instructions) + ". cells: " + str(path.cells))
-        print("cull: " + path.cull())
+        print("cull: " + path.cull(path))
         print("Instructions after: " + str(path.instructions) + ". cells: " + str(path.cells))
+    if task[0] == "doLoop":
+        undiscovered = {}
+        for row in range(len(maze.cells)):
+            for column in range(len(maze.cells[row])):  # may need - 1
+                if not maze.cells[row][column].hasBeenFound:
+                    print("row: " + str(row), "col: " + str(column))
+                    priority = 0
+                    for i in maze.getOptions((column, row), None):
+                        if i == 0:
+                            if not maze.getCell(column, row - 1).hasBeenFound:
+                                priority += 1
+                        if i == 1:
+                            if not maze.getCell(column + 1, row).hasBeenFound:
+                                priority += 1
+                        if i == 2:
+                            if not maze.getCell(column, row + 1).hasBeenFound:
+                                priority += 1
+                        if i == 3:
+                            if not maze.getCell(column - 1, row).hasBeenFound:
+                                priority += 1
+                    undiscovered[(row, column)] = (len(maze.pathFind(location, tuple(str(row) + str(column))).instructions), )
+        
 
