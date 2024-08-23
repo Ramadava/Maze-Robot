@@ -1,19 +1,18 @@
 from hub import port, motion_sensor, button
-import motor, distance_sensor, color_sensor, runloop
+import motor, distance_sensor, color_sensor, runloop, force_sensor
 import time, math
 
 # to double check:
 RightMotor = port.A
 LeftMotor = port.C
-ColorSensor = port.D
-DistanceSensor = port.E
+ColorSensor = port.B
+DistanceSensor = port.D
+ForceSensor = port.F
 
 # to fine tune:
 
-regular_white_max_reflected = 99
-
-
-# place on white tile, run fine tuning, wait for a couple seconds, see the value, add two to it, and put it here
+regular_white_max_reflected = 99  # place on white tile, run fine tuning, wait for a couple seconds, see the value, add two to it, and put it here
+forceSensorThreshold = 5  # Should be fine as is
 
 
 def setUpDirection(pastD: list) -> int:
@@ -103,7 +102,7 @@ class Path:
     length = 0
     start = Cell.default
     instructions = []
-    cells = [()]
+    cells = []
     currentCell = Cell.default()
 
     def append(self, direction: int, junction: bool):
@@ -122,9 +121,9 @@ class Path:
         self.length += 1
         self.currentCell = maze.getCell(self.cells[self.length][0], self.cells[self.length][1])
 
-    def cull(self, _path):
+    def cull(self):
         indexOfLatestJunction = 0
-        for _i in range(len(_path.instructions)):
+        for _i in range(len(self.instructions)):
             v = len(self.instructions) - _i - 1
             if self.instructions[v][0] == "X":
                 # we found him
@@ -135,13 +134,18 @@ class Path:
                 self.currentCell = maze.getCell(int(self.cells[len(self.cells) - 1][0]),
                                                 int(self.cells[len(self.cells) - 1][1]))
 
-                options = Maze.getOptions(_path)
+                options = maze.getOptions(self)
                 for h in lastInstructions:
                     if int(h) in options:
                         options.remove(int(h))
-                _path.append(options[0], len(options) > 1)
+                self.append(options[0], len(options) > 1)
                 break
-        return _path
+
+    def cut(self):
+        self.length -= 1
+        self.cells = self.cells[1:]
+        self.instructions = self.instructions[1:]
+        self.currentCell = maze.getCell(location[0], location[1])
 
 
 class Maze:
@@ -200,39 +204,81 @@ class Maze:
                                                                                                           :len(__path.cells) - 1]:
             if len(__path.instructions) > 0 and __path.instructions[len(__path.instructions) - 1] != "2" and \
                     __path.instructions[len(__path.instructions) - 1] != "X2":
-                _options.append(0)
+                if location[1] > 0 and maze.getCell(__path.cells[len(__path.cells) - 1][0],
+                                                    __path.cells[len(__path.cells) - 1][1] - 1).color != 1:
+                    _options.append(0)
+                elif not location[1] > 0:
+                    maze.expand(0)
+                    _options.append(0)
             elif len(__path.instructions) == 0:
-                _options.append(0)
+                if location[1] > 0 and maze.getCell(__path.cells[len(__path.cells) - 1][0],
+                                                    __path.cells[len(__path.cells) - 1][1] - 1).color != 1:
+                    _options.append(0)
+                elif not location[1] > 0:
+                    maze.expand(0)
+                    _options.append(0)
         if __path.currentCell.southWall == 0 and not (__path.cells[len(__path.cells) - 1][0],
                                                       int(__path.cells[len(__path.cells) - 1][1]) + 1) in __path.cells[
                                                                                                           :len(__path.cells) - 1]:
             if len(__path.instructions) > 0 and __path.instructions[len(__path.instructions) - 1] != "0" and \
                     __path.instructions[len(__path.instructions) - 1] != "X0":
-                _options.append(2)
+                if location[1] < maze.height - 1 and maze.getCell(__path.cells[len(__path.cells) - 1][0],
+                                                                  __path.cells[len(__path.cells) - 1][
+                                                                      1] + 1).color != 1:
+                    _options.append(2)
+                elif not location[1] < maze.height - 1:
+                    maze.expand(2)
+                    _options.append(2)
             elif len(__path.instructions) == 0:
-                _options.append(2)
+                if location[1] < maze.height - 1 and maze.getCell(__path.cells[len(__path.cells) - 1][0],
+                                                                  __path.cells[len(__path.cells) - 1][
+                                                                      1] + 1).color != 1:
+                    _options.append(2)
+                elif not location[1] < maze.height - 1:
+                    maze.expand(2)
+                    _options.append(2)
         if __path.currentCell.eastWall == 0 and not (int(__path.cells[len(__path.cells) - 1][0]) + 1,
                                                      __path.cells[len(__path.cells) - 1][1]) in __path.cells[
                                                                                                 :len(__path.cells) - 1]:
             if len(__path.instructions) > 0 and __path.instructions[len(__path.instructions) - 1] != "3" and \
                     __path.instructions[len(__path.instructions) - 1] != "X3":
-                _options.append(1)
+                if location[0] < maze.width - 1 and maze.getCell(__path.cells[len(__path.cells) - 1][0] + 1,
+                                                                 __path.cells[len(__path.cells) - 1][1]).color != 1:
+                    _options.append(1)
+                elif not location[0] < maze.width - 1:
+                    maze.expand(1)
+                    _options.append(1)
             elif len(__path.instructions) == 0:
-                _options.append(1)
+                if location[0] < maze.width - 1 and maze.getCell(__path.cells[len(__path.cells) - 1][0] + 1,
+                                                                 __path.cells[len(__path.cells) - 1][1]).color != 1:
+                    _options.append(1)
+                elif not location[0] < maze.width - 1:
+                    maze.expand(1)
+                    _options.append(1)
         if __path.currentCell.westWall == 0 and not (int(__path.cells[len(__path.cells) - 1][0]) - 1,
                                                      __path.cells[len(__path.cells) - 1][1]) in __path.cells[
                                                                                                 :len(__path.cells) - 1]:
             if len(__path.instructions) > 0 and __path.instructions[len(__path.instructions) - 1] != "1" and \
                     __path.instructions[len(__path.instructions) - 1] != "X1":
-                _options.append(3)
+                if location[0] > 0 and maze.getCell(__path.cells[len(__path.cells) - 1][0] - 1,
+                                                    __path.cells[len(__path.cells) - 1][1]).color != 1:
+                    _options.append(3)
+                elif not location[0] > 0:
+                    maze.expand(3)
+                    _options.append(3)
             elif len(__path.instructions) == 0:
-                _options.append(3)
+                if location[0] > 0 and maze.getCell(__path.cells[len(__path.cells) - 1][0] - 1,
+                                                    __path.cells[len(__path.cells) - 1][1]).color != 1:
+                    _options.append(3)
+                elif not location[0] > 0:
+                    maze.expand(3)
+                    _options.append(3)
 
         return _options
 
     def pathFind(self, start: tuple, end: tuple) -> Path:
         path: Path = Path()
-        path.cells[0] = start
+        path.cells.append(start)
         path.currentCell = self.getCell(int(start[0]), int(start[1]))
         hasFoundPath = False
 
@@ -245,31 +291,32 @@ class Maze:
                 print("No path found.")
                 break
             print(str(path.cells))
-            currentCell = path.cells[len(path.cells) - 1]
+            currentCell = maze.getCell((path.cells[len(path.cells) - 1])[0], (path.cells[len(path.cells) - 1])[1])
             desiredDirection1 = 0  # --> the first direction we want to go. Will always be vertical, unless at the same y coord as the target.
             desiredDirection2 = 1  # --> 2nd priority. For example, if going up and right, will be right(1).
 
+            currentLoc = (path.cells[len(path.cells) - 1][0], path.cells[len(path.cells) - 1][1])
             if path.cells[len(path.cells) - 1] in path.cells[:len(path.cells) - 1]:
-                _path = path.cull(path)
+                path.cull()
                 continue
-            if int(end[1]) < int(currentCell[0]):
+            if int(end[1]) < currentLoc[0]:
                 # thing is above.
-                if int(end[0]) > int(currentCell[0]):
+                if int(end[0]) > currentLoc[0]:
                     pass
                 else:
                     desiredDirection2 = 3
-            elif int(end[1]) > int(currentCell[1]):
+            elif int(end[1]) > currentLoc[1]:
                 # thing is below.
                 desiredDirection1 = 2
-                if int(end[0]) > int(currentCell[0]):
+                if int(end[0]) > currentLoc[0]:
                     pass
                 else:
                     desiredDirection2 = 3
             else:
-                if int(end[0]) > int(currentCell[1]):
+                if int(end[0]) > currentLoc[1]:
                     desiredDirection1 = 1
                 else:
-                    if int(end[0]) == int(currentCell[0]):
+                    if int(end[0]) == currentLoc[0]:
                         print("Pathfind complete.")
                         return path
                     else:
@@ -324,6 +371,23 @@ def correct(direction: int):
     time.sleep(1)
 
 
+async def checkWall():
+    global maze, location, forceSensor
+
+    def hi() -> bool:
+        motor.run_for_degrees(LeftMotor, 100, -20)
+        motor.run_for_degrees(RightMotor, 100, 20)
+        if force_sensor.force(ForceSensor) > forceSensorThreshold * 10:
+            print("done")
+            return True
+
+        return False
+
+    print(hi)
+    await runloop.until(hi)
+    print("checked")
+
+
 # variables:
 maze = Maze()
 iteration = 0
@@ -354,7 +418,116 @@ async def main():
     for i in undiscovereds:
         if undiscovereds[i] < currentTarget[1]:
             currentTarget = (i, undiscovereds[i])
-    pathToTarget =
+    pathToTarget = maze.pathFind(location, currentTarget)
+    frstInst = pathToTarget.instructions[0]
+    if frstInst[0] == "0" or (frstInst[0] == "X" and frstInst[1] == "0"):
+        # go up
+        undiscoveredWalls = []
+
+        if maze.getCell(location[0], location[1]).northWall == 1 or maze.getCell(location[0],
+                                                                                 location[1]).northWall == 0:
+            undiscoveredWalls.append(0)
+        if maze.getCell(location[0], location[1]).eastWall == 1 or maze.getCell(location[0], location[1]).eastWall == 0:
+            undiscoveredWalls.append(1)
+        if maze.getCell(location[0], location[1]).southWall == 1 or maze.getCell(location[0],
+                                                                                 location[1]).southWall == 0:
+            undiscoveredWalls.append(2)
+        if maze.getCell(location[0], location[1]).westWall == 1 or maze.getCell(location[0], location[1]).westWall == 0:
+            undiscoveredWalls.append(3)
+
+        if facing == 1:
+            Turn(False)
+        elif facing == 2:
+            if undiscoveredWalls.__contains__(1):
+                Turn(False)
+                Turn(False)
+            else:
+                Turn(True)
+                Turn(True)
+        elif facing == 3:
+            Turn(True)
+    elif frstInst[0] == "1" or (frstInst[0] == "X" and frstInst[1] == "1"):
+        # go right
+        undiscoveredWalls = []
+
+        if maze.getCell(location[0], location[1]).northWall == 1 or maze.getCell(location[0],
+                                                                                 location[1]).northWall == 0:
+            undiscoveredWalls.append(0)
+        if maze.getCell(location[0], location[1]).eastWall == 1 or maze.getCell(location[0], location[1]).eastWall == 0:
+            undiscoveredWalls.append(1)
+        if maze.getCell(location[0], location[1]).southWall == 1 or maze.getCell(location[0],
+                                                                                 location[1]).southWall == 0:
+            undiscoveredWalls.append(2)
+        if maze.getCell(location[0], location[1]).westWall == 1 or maze.getCell(location[0], location[1]).westWall == 0:
+            undiscoveredWalls.append(3)
+
+        if facing == 2:
+            Turn(False)
+        elif facing == 3:
+            if undiscoveredWalls.__contains__(1):
+                Turn(False)
+                Turn(False)
+            else:
+                Turn(True)
+                Turn(True)
+        elif facing == 0:
+            Turn(True)
+    elif frstInst[0] == "2" or (frstInst[0] == "X" and frstInst[1] == "2"):
+        # go down
+        undiscoveredWalls = []
+
+        if maze.getCell(location[0], location[1]).northWall == 1 or maze.getCell(location[0],
+                                                                                 location[1]).northWall == 0:
+            undiscoveredWalls.append(0)
+        if maze.getCell(location[0], location[1]).eastWall == 1 or maze.getCell(location[0], location[1]).eastWall == 0:
+            undiscoveredWalls.append(1)
+        if maze.getCell(location[0], location[1]).southWall == 1 or maze.getCell(location[0],
+                                                                                 location[1]).southWall == 0:
+            undiscoveredWalls.append(2)
+        if maze.getCell(location[0], location[1]).westWall == 1 or maze.getCell(location[0], location[1]).westWall == 0:
+            undiscoveredWalls.append(3)
+
+        if facing == 3:
+            Turn(False)
+        elif facing == 0:
+            if undiscoveredWalls.__contains__(1):
+                Turn(False)
+                Turn(False)
+            else:
+                Turn(True)
+                Turn(True)
+        elif facing == 1:
+            Turn(True)
+    elif frstInst[0] == "3" or (frstInst[0] == "X" and frstInst[1] == "3"):
+        # go left
+        undiscoveredWalls = []
+
+        if maze.getCell(location[0], location[1]).northWall == 1 or maze.getCell(location[0],
+                                                                                 location[1]).northWall == 0:
+            undiscoveredWalls.append(0)
+        if maze.getCell(location[0], location[1]).eastWall == 1 or maze.getCell(location[0], location[1]).eastWall == 0:
+            undiscoveredWalls.append(1)
+        if maze.getCell(location[0], location[1]).southWall == 1 or maze.getCell(location[0],
+                                                                                 location[1]).southWall == 0:
+            undiscoveredWalls.append(2)
+        if maze.getCell(location[0], location[1]).westWall == 1 or maze.getCell(location[0], location[1]).westWall == 0:
+            undiscoveredWalls.append(3)
+
+        if facing == 0:
+            Turn(False)
+        elif facing == 1:
+            if undiscoveredWalls.__contains__(1):
+                Turn(False)
+                await checkWall()
+                Turn(False)
+            else:
+                Turn(True)
+                Turn(True)
+        elif facing == 2:
+            Turn(True)
+
+    forward()  # this marks the point where the robot physically enters a new cell
+    pathToTarget.cut()
 
 
 while True:
