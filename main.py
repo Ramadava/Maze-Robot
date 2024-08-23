@@ -1,4 +1,6 @@
-from hub import port, motion_sensor, button
+# noinspection PyUnresolvedReferences
+from hub  import port, motion_sensor, button
+# noinspection PyUnresolvedReferences
 import motor, distance_sensor, color_sensor, runloop, force_sensor
 import time, math
 
@@ -12,7 +14,8 @@ ForceSensor = port.F
 # to fine tune:
 
 regular_white_max_reflected = 99  # place on white tile, run fine tuning, wait for a couple seconds, see the value, add two to it, and put it here
-forceSensorThreshold = 5  # Should be fine as is
+forceSensorThreshold = 5  # TODO: Should be fine as is WAIT NO DOUBLE CHECK IT RAMEY PLEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAASE
+distanceSensorTolerance = 10  # TODO: Set this as an actual value
 
 
 def setUpDirection(pastD: list) -> int:
@@ -342,7 +345,7 @@ class Maze:
                     continue
             else:
                 # no options. time to delete the _path until the last junction, then start again from there.
-                path = path.cull(path)
+                path.cull()
                 continue
 
         return path
@@ -388,17 +391,79 @@ async def checkWall():
     print("checked")
 
 
+def checkDist():
+    global maze
+    if turning:  # TODO: add to this as more things become relevant
+        return
+    dist = float(distance_sensor.distance(DistanceSensor) / 10) - 17  # TODO: adjust this value
+    if dist != -1 and dist % 30 < distanceSensorTolerance:
+        wallDist = dist / 30
+        if facing == 0:
+            coords = (location[0], location[1] - wallDist)  # coordinates for use in the maze.getCell func
+            heightVal = (maze.height - location[
+                1]) + wallDist  # regular y value, starting at 1 (useful for comparisons with maze.height)
+            if heightVal > maze.height:  # maze needs expansion to fit the seen distance.
+                for i in range(heightVal - maze.height):
+                    maze.expand(0)
+            cell = maze.getCell(coords[0], coords[1])
+            if not cell.hasBeenFound:
+                maze.setCell(coords[0], coords[1], cell.color, 1, cell.southWall, cell.eastWall, cell.westWall, False)
+                if heightVal + 1 > maze.height:  # extra cell above, we can set the south wall of that one while we're at it
+                    maze.setCell(coords[0], coords[1] - 1, cell.color, cell.northWall, 1, cell.eastWall, cell.westWall,
+                                 False)
+        if facing == 1:
+            coords = (location[0] + wallDist, location[1])  # coordinates for use in the maze.getCell func
+            widthVal = location[
+                           0] + wallDist + 1  # regular x value, starting at 1 (useful for comparisons with maze.width)
+            if widthVal > maze.width:  # maze needs expansion to fit the seen distance.
+                for i in range(widthVal - maze.width):
+                    maze.expand(1)
+            cell = maze.getCell(coords[0], coords[1])
+            if not cell.hasBeenFound:
+                maze.setCell(coords[0], coords[1], cell.color, cell.northWall, cell.southWall, 1, cell.westWall, False)
+                if widthVal + 1 <= maze.width:  # extra cell to the right, we can set the west wall of that one while we're at it
+                    maze.setCell(coords[0], coords[1] - 1, cell.color, cell.northWall, cell.southWall, cell.eastWall, 1,
+                                 False)
+        if facing == 2:
+            coords = (location[0], location[1] + wallDist)  # coordinates for use in the maze.getCell func
+            heightVal = (maze.height - location[
+                1]) - wallDist  # regular y value, starting at 1 (useful for comparisons with maze.height)
+            if heightVal < 1:  # maze needs expansion to fit the seen distance.
+                for i in range(-heightVal + 1):
+                    maze.expand(2)
+            cell = maze.getCell(coords[0], coords[1])
+            if not cell.hasBeenFound:
+                maze.setCell(coords[0], coords[1], cell.color, cell.northWall, 1, cell.eastWall, cell.westWall, False)
+                if heightVal - 1 >= 1:  # extra cell below, we can set the north wall of that one while we're at it
+                    maze.setCell(coords[0], coords[1] + 1, cell.color, 1, cell.southWall, cell.eastWall, cell.westWall,
+                                 False)
+        if facing == 3:
+            coords = (location[0] - wallDist, location[1])  # coordinates for use in the maze.getCell func
+            widthVal = location[
+                           0] - wallDist + 1  # regular x value, starting at 1 (useful for comparisons with maze.width)
+            if widthVal < 1:  # maze needs expansion to fit the seen distance.
+                for i in range(-widthVal + 1):
+                    maze.expand(3)
+            cell = maze.getCell(coords[0], coords[1])
+            if not cell.hasBeenFound:
+                maze.setCell(coords[0], coords[1], cell.color, cell.northWall, cell.southWall, cell.eastWall, 1, False)
+                if widthVal - 1 >= 1:  # extra cell to the left, we can set the east wall of that one while we're at it
+                    maze.setCell(coords[0], coords[1] - 1, cell.color, cell.northWall, cell.southWall, 1, cell.westWall,
+                                 False)
+
+
 # variables:
 maze = Maze()
-iteration = 0
-turning = False
+turning: bool = False
 pastDirections = []
-direction = setUpDirection(pastDirections)
+direction: int = setUpDirection(pastDirections)
+facing: int = 0
 location: tuple = (0, 0)
+pitch = motion_sensor.tilt_angles()[1] / 10  # TODO: make sure we are checking for ramps in some kind of while loop
 
 
 async def main():
-    global iteration, task, maze
+    global task, maze, direction, pitch
     time.sleep(0.5)
     direction = round(motion_sensor.tilt_angles()[0] / 10)
     facing = 0
