@@ -1,10 +1,9 @@
 # noinspection PyUnresolvedReferences
-from hub  import port, motion_sensor, button
+from hub import port, motion_sensor, button
 # noinspection PyUnresolvedReferences
-import motor, distance_sensor, color_sensor, runloop, force_sensor
-import time, math
+import motor, distance_sensor, color_sensor, runloop, force_sensor, time
 
-# to double check:
+# to double-check:
 RightMotor = port.A
 LeftMotor = port.C
 ColorSensor = port.B
@@ -16,9 +15,11 @@ ForceSensor = port.F
 regular_white_max_reflected = 99  # place on white tile, run fine tuning, wait for a couple seconds, see the value, add two to it, and put it here
 forceSensorThreshold = 5  # TODO: Should be fine as is WAIT NO DOUBLE CHECK IT RAMEY PLEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAASE
 distanceSensorTolerance = 10  # TODO: Set this as an actual value
+pitchThreshold = 3  # TODO: fine tine this value. This is set to the max value the pitch gets to when the robot is flat.
 
 
-def setUpDirection(pastD: list) -> int:
+def setUpDirection(
+        pastD: list) -> int:  # you can basically ignore this, but dont delete(used to average past directions for more reliable result)
     if len(pastD) == 0:
         return 0
     if len(pastD) > 5:
@@ -30,19 +31,50 @@ def setUpDirection(pastD: list) -> int:
     return round(forAVG / len(pastD))
 
 
-def Turn(right: bool):
-    global direction, facing
+def Turn(right: bool):  # TODO: check this turns correctly
+    global facing, turning, direction
+    turning = True
+    direct = direction
+    tempDir = 0
+    checkDist()
     if right:
-        motor.run_for_degrees(LeftMotor, -130, 80)
-        motor.run_for_degrees(RightMotor, -130, 80)
+        while tempDir < 90:
+            motor.run_for_time(LeftMotor, 5, -80)
+            motor.run_for_time(RightMotor, 5, -80)
+            tempDir = direction - direct + 5  # this may be wrong NOTE: tempDir is the angle weve covered, direction is the direction we are facing, direct is the direction we started at
+            direction = angle()
+        if facing == 3:  # TODO: make sure this works right
+            facing = 0
+        else:
+            facing += 1
     else:
-        motor.run_for_degrees(LeftMotor, 130, 80)
-        motor.run_for_degrees(RightMotor, 130, 80)
+        while tempDir > -90:
+            motor.run_for_time(LeftMotor, 5, 80)
+            motor.run_for_time(RightMotor, 5, 80)
+            tempDir = direct - direction + 5  # this may be wrong
+        if facing == 0:
+            facing = 3
+        else:
+            facing -= 1
+    turning = False
+    checkDist()
+    return None
 
 
-def forward():
-    motor.run_for_degrees(RightMotor, 600, 100)
-    motor.run_for_degrees(LeftMotor, -600, 100)
+def forward():  # fun maths to make it go a desired distance from just the acceleration known
+    startTime = time.time()
+    acceleration = motion_sensor.acceleration(False)[
+        0]  # TODO: double check im getting the right one, also bool might be wrong
+    displacement = 0
+    motor.stop(LeftMotor, stop=motor.BRAKE)  # TODO: make sure this works as expected
+    motor.stop(RightMotor, stop=motor.BRAKE)
+    velocity = 0
+    while displacement < 29:
+        motor.run_for_degrees(RightMotor, 1,
+                              100)  # TODO: make sure this goes forwards, not backwards. (and works as intened)
+        motor.run_for_degrees(LeftMotor, 1, -100)
+        velocity += (time.time() - startTime) * (acceleration * 1000 / 9.81)  # TODO: check this formula works properly
+        displacement += velocity * (time.time() - startTime)
 
 
 def angle() -> float:
@@ -57,10 +89,10 @@ def checked_forward():
 
 
 def process_square():
+    global maze, localtion, facing, turning
     # fetch data
     _color = color_sensor.color(ColorSensor)
     _reflection = color_sensor.reflection(ColorSensor)
-    distance = distance_sensor.distance(DistanceSensor)
     cell = Cell.default()
     cell.hasBeenFound = True
     # Check the color of the square
@@ -108,18 +140,18 @@ class Path:
     cells = []
     currentCell = Cell.default()
 
-    def append(self, direction: int, junction: bool):
+    def append(self, _direction: int, junction: bool):
         if junction:
-            self.instructions.append("X" + str(direction))
+            self.instructions.append("X" + str(_direction))
         else:
-            self.instructions.append(str(direction))
-        if direction == 0:
+            self.instructions.append(str(_direction))
+        if _direction == 0:
             self.cells.append((int(self.cells[self.length][0]), int(self.cells[self.length][1]) - 1))
-        if direction == 1:
+        if _direction == 1:
             self.cells.append((int(self.cells[self.length][0]) + 1, int(self.cells[self.length][1])))
-        if direction == 2:
+        if _direction == 2:
             self.cells.append((int(self.cells[self.length][0]), int(self.cells[self.length][1]) + 1))
-        if direction == 3:
+        if _direction == 3:
             self.cells.append((int(self.cells[self.length][0]) - 1, int(self.cells[self.length][1])))
         self.length += 1
         self.currentCell = maze.getCell(self.cells[self.length][0], self.cells[self.length][1])
@@ -158,8 +190,8 @@ class Maze:
     width: int = 1
     height: int = 1
 
-    def expand(self, direction: int):
-        if direction == 0:
+    def expand(self, _direction: int):
+        if _direction == 0:
             newRow = []
             for o in range(self.width):
                 newRow.append(Cell.default())
@@ -169,17 +201,17 @@ class Maze:
             for o in range(self.height):
                 self.cells.append(tempCells[o])
             self.height += 1
-        elif direction == 1:
+        elif _direction == 1:
             for o in range(self.height):
                 self.cells[o].append(Cell.default())
             self.width += 1
-        elif direction == 2:
+        elif _direction == 2:
             newRow = []
             for o in range(self.width):
                 newRow.append(Cell.default())
             self.cells.append(newRow)
             self.height += 1
-        elif direction == 3:
+        elif _direction == 3:
             for o in range(self.height):
                 tempRow = self.cells[o]
                 self.cells[o] = []
@@ -361,39 +393,41 @@ def printMaze():
         print(_row)
 
 
-def correct(direction: int):
+def correct(_direction: int):
     motor.stop(RightMotor)
     motor.stop(LeftMotor)
-    if direction % 900 > 450:
+    if _direction % 900 > 450:
         # turn left
         motor.run_for_degrees(RightMotor, 40, 50)
     else:
         # turn right
         motor.run_for_degrees(LeftMotor, 40, -50)
-    print(direction % 900)
+    print(_direction % 900)
     time.sleep(1)
 
 
-async def checkWall():
-    global maze, location, forceSensor
-
+def checkWall():
     def hi() -> bool:
-        motor.run_for_degrees(LeftMotor, 100, -20)
-        motor.run_for_degrees(RightMotor, 100, 20)
-        if force_sensor.force(ForceSensor) > forceSensorThreshold * 10:
-            print("done")
+        if force_sensor.force(ForceSensor) > (forceSensorThreshold * 10):
             return True
 
         return False
 
-    print(hi)
-    await runloop.until(hi)
-    print("checked")
+    iterations = 0
+    while hi() == False:
+        time.sleep(0.1)
+        motor.run_for_degrees(LeftMotor, 100, -20)  # TODO: check this goes forward
+        motor.run_for_degrees(RightMotor, 100, 20)
+        iterations += 1
+    for i in range(iterations):
+        motor.run_for_degrees(LeftMotor, 100, 20)  # TODO: check this goes backward
+        motor.run_for_degrees(RightMotor, 100, -20)
+    return
 
 
 def checkDist():
     global maze
-    if turning:  # TODO: add to this as more things become relevant
+    if turning or pitch > pitchThreshold:  # TODO: add to this as more things become relevant
         return
     dist = float(distance_sensor.distance(DistanceSensor) / 10) - 17  # TODO: adjust this value
     if dist != -1 and dist % 30 < distanceSensorTolerance:
@@ -456,18 +490,19 @@ def checkDist():
 maze = Maze()
 turning: bool = False
 pastDirections = []
-direction: int = setUpDirection(pastDirections)
+direction: float = setUpDirection(pastDirections)
 facing: int = 0
 location: tuple = (0, 0)
 pitch = motion_sensor.tilt_angles()[1] / 10  # TODO: make sure we are checking for ramps in some kind of while loop
 
 
-async def main():
-    global task, maze, direction, pitch
+async def main():  # the main code loop
+    global direction, facing, pitch
     time.sleep(0.5)
-    direction = round(motion_sensor.tilt_angles()[0] / 10)
+    direction = angle()
     facing = 0
     pitch = round(motion_sensor.tilt_angles()[1] / 10)
+    checkDist()
 
     # find and go to next cell
     if len(maze.cells) == 1 and len(maze.cells[0]) == 1:
@@ -592,6 +627,7 @@ async def main():
             Turn(True)
 
     forward()  # this marks the point where the robot physically enters a new cell
+    checkDist()
     pathToTarget.cut()
 
 
