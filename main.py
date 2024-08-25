@@ -1,5 +1,5 @@
 # noinspection PyUnresolvedReferences
-from hub import port, motion_sensor, button
+from hub import port, motion_sensor, button, sound
 # noinspection PyUnresolvedReferences
 import motor, distance_sensor, color_sensor, runloop, force_sensor, time
 
@@ -64,7 +64,7 @@ def Turn(right: bool):  # TODO: check this turns correctly, updates facing varia
 
 def forward():  # fun maths to make it go a desired distance from just the acceleration known TODO: check it works
     global maze, location
-    startTime = time.time()
+    _startTime = time.time()
     acceleration = motion_sensor.acceleration(False)[
         0]  # TODO: double check im getting the right one, also parameter might be wrong
     displacement = 0
@@ -77,8 +77,8 @@ def forward():  # fun maths to make it go a desired distance from just the accel
         motor.run_for_degrees(RightMotor, 1,
                               100)  # TODO: make sure this goes forwards, not backwards. (and works as intended)
         motor.run_for_degrees(LeftMotor, 1, -100)
-        velocity += (time.time() - startTime) * (acceleration * 1000 / 9.81)  # TODO: check this formula works properly
-        displacement += velocity * (time.time() - startTime)
+        velocity += (time.time() - _startTime) * (acceleration * 1000 / 9.81)  # TODO: check this formula works properly
+        displacement += velocity * (time.time() - _startTime)
         degrees += 1
         if force_sensor.force(ForceSensor) > forceSensorThreshold:  # TODO: make this also check for black squares
             print("wall encountered")
@@ -171,27 +171,34 @@ def process_square():
         # black
         cell.color = 1  # NOTE: not really sure why we need this, we will never be processing a black square, hopefully
 
-    # look at walls
+    # looking now at the walls
     walls = [cell.northWall, cell.eastWall, cell.southWall, cell.westWall]
     for i in range(len(walls)):
         if walls[i] == 2:
-            continue
+            continue  # don't need to recheck if we already know for certain
         else:
-            if facing == i:
+            if facing == i:  # we are facing in the direction of the wall
                 checkWall()
             else:
                 if facing == 3 and i == 0:
                     Turn(True)
-                    checkWall()
-                    continue
                 elif facing == 0 and i == 3:
                     Turn(False)
                     checkWall()
+                elif facing > i:
+                    while facing > i:
+                        Turn(False)
+                        checkWall()
+                else:
+                    while facing < i:
+                        Turn(True)
+                        checkWall()
+                checkWall()
 
 
 class Cell:
     color = 0
-    northWall = 0  # 0 = no wall, 1 = probably wall, 2 = wall
+    northWall = 0  # 0 = no wall, 1 = probably wall (from distance sensor), 2 = wall
     southWall = 0
     eastWall = 0
     westWall = 0
@@ -266,7 +273,8 @@ class Maze:
     width: int = 1
     height: int = 1
 
-    def expand(self, _direction: int):
+    def expand(self, _direction: int):  # TODO: check that
+        global start, location
         if _direction == 0:
             newRow = []
             for o in range(self.width):
@@ -277,6 +285,8 @@ class Maze:
             for o in range(self.height):
                 self.cells.append(tempCells[o])
             self.height += 1
+            start = (start[0], start[1] + 1)
+            location = (location[0], location[1] + 1)
         elif _direction == 1:
             for o in range(self.height):
                 self.cells[o].append(Cell.default())
@@ -295,6 +305,8 @@ class Maze:
                 for v in range(len(tempRow)):
                     self.cells[o].append(tempRow[v])
             self.width += 1
+            start = (start[0] + 1, start[1])
+            location = (location[0] + 1, location[1])
 
     def getCell(self, _x: int, _y: int) -> Cell:
         # print("getting cell. y val: " + str(_y) + ". x val: " + str(_x))
@@ -389,10 +401,10 @@ class Maze:
 
         return _options
 
-    def pathFind(self, start: tuple, end: tuple) -> Path:
+    def pathFind(self, _start: tuple, end: tuple) -> Path:
         path: Path = Path()
-        path.cells.append(start)
-        path.currentCell = self.getCell(int(start[0]), int(start[1]))
+        path.cells.append(_start)
+        path.currentCell = self.getCell(int(_start[0]), int(_start[1]))
         hasFoundPath = False
 
         # find a path. Logic: take the starting square. pick a random path going in the direction of the end, continue until a dead end or the end is found. When dead end found, delete path back until the last fork and take another option.
@@ -526,7 +538,8 @@ def checkDist():
                                  False)
         if facing == 1:
             cords = (location[0] + wallDist, location[1])  # coordinates for use in the maze.getCell func
-            widthVal = location[0] + wallDist + 1  # regular x value, starting at 1 (useful for comparisons with maze.width)
+            widthVal = location[
+                           0] + wallDist + 1  # regular x value, starting at 1 (useful for comparisons with maze.width)
             if widthVal > maze.width:  # maze needs expansion to fit the seen distance.
                 for i in range(widthVal - maze.width):
                     maze.expand(1)
@@ -540,7 +553,8 @@ def checkDist():
                                  False)
         if facing == 2:
             cords = (location[0], location[1] + wallDist)  # coordinates for use in the maze.getCell func
-            heightVal = (maze.height - location[1]) - wallDist  # regular y value, starting at 1 (useful for comparisons with maze.height)
+            heightVal = (maze.height - location[
+                1]) - wallDist  # regular y value, starting at 1 (useful for comparisons with maze.height)
             if heightVal < 1:  # maze needs expansion to fit the seen distance.
                 for i in range(-heightVal + 1):
                     maze.expand(2)
@@ -576,7 +590,9 @@ pastDirections = []
 direction: float = setUpDirection(pastDirections)
 facing: int = 0
 location: tuple = (0, 0)
+start: tuple = (0, 0)
 pitch = motion_sensor.tilt_angles()[1] / 10  # TODO: make sure we are checking for ramps in some kind of while loop
+startTime = time.time()
 
 
 async def main():  # the main code loop
@@ -588,9 +604,7 @@ async def main():  # the main code loop
     checkDist()
 
     # find and go to next cell
-    if len(maze.cells) == 1 and len(maze.cells[0]) == 1:
-        # starting maze, haven't discovered anything yet
-        process_square()
+    process_square()
     undiscovereds = {}
     for row in range(len(maze.cells)):
         for col in range(len(maze.cells[row])):
@@ -601,6 +615,11 @@ async def main():  # the main code loop
     for i in undiscovereds:
         if undiscovereds[i] < currentTarget[1]:
             currentTarget = (i, undiscovereds[i])
+    if currentTarget == ((0, 0), 200):  # all tiles have been discovered (with time to spare), go back to start
+        __path = maze.pathFind(location, start)
+        goBackToStartAndReport(__path)
+        return
+
     pathToTarget = maze.pathFind(location, currentTarget)
     frstInst = pathToTarget.instructions[0]
     if frstInst[0] == "0" or (frstInst[0] == "X" and frstInst[1] == "0"):
@@ -715,5 +734,36 @@ async def main():  # the main code loop
     pathToTarget.cut()
 
 
+def goBackToStartAndReport(_path: Path):  # TODO: check it works
+    for i in _path.instructions:
+        instruction = i[0]
+        if instruction == 'X':
+            instruction = i[1]
+
+        if facing == 3 and instruction == 0:
+            Turn(True)
+        elif facing == 0 and instruction == 3:
+            Turn(False)
+        elif facing > instruction:
+            while facing > instruction:
+                Turn(False)
+        else:
+            while facing < instruction:
+                Turn(True)
+        forward()
+    # we are now back the starting square, hopefully
+    sound.beep(262, 300)
+    sound.beep(330, 300)
+    sound.beep(329, 300)
+    sound.beep(523, 600)
+
+
 while True:
-    runloop.run(main())
+    pathBackToStart = maze.pathFind(location, start)
+    timeForInstruction = 3
+    if time.time() - startTime > (
+            240 - (timeForInstruction * len(pathBackToStart.instructions))):  # TODO: check it works
+        goBackToStartAndReport(pathBackToStart)
+    else:
+        pastDirections.append(direction)  # TODO: check this works properly
+        runloop.run(main())
