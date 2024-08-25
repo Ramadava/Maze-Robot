@@ -9,6 +9,7 @@ LeftMotor = port.C
 ColorSensor = port.B
 DistanceSensor = port.D
 ForceSensor = port.F
+VictimSensor = port.E  # TODO: double check this is correct
 
 # to fine tune:
 
@@ -16,6 +17,7 @@ regular_white_max_reflected = 99  # place on white tile, run fine-tuning, wait f
 forceSensorThreshold = 5  # TODO: Should be fine as is WAIT NO DOUBLE CHECK IT RAMEY PLEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAASE
 distanceSensorTolerance = 10  # TODO: Set this as an actual value
 pitchThreshold = 3  # TODO: fine tine this value. This is set to the max value the pitch gets to when the robot is flat.
+normalCellColor = "white"  # make this the color of the floor
 
 
 def setUpDirection(
@@ -31,7 +33,7 @@ def setUpDirection(
     return round(forAVG / len(pastD))
 
 
-def Turn(right: bool):  # TODO: check this turns correctly
+def Turn(right: bool):  # TODO: check this turns correctly, updates facing variable
     global facing, turning, direction
     turning = True
     direct = direction
@@ -41,7 +43,7 @@ def Turn(right: bool):  # TODO: check this turns correctly
         while tempDir < 90:
             motor.run_for_time(LeftMotor, 5, -80)
             motor.run_for_time(RightMotor, 5, -80)
-            tempDir = direction - direct + 5  # this may be wrong NOTE: tempDir is the angle we've covered, direction is the direction we are facing, direct is the direction we started at
+            tempDir = direction - direct + 5  # TODO: this may be wrong, double check NOTE: tempDir is the angle we've covered, direction is the direction we are facing, direct is the direction we started at
             direction = angle()
         if facing == 3:  # TODO: make sure this works right
             facing = 0
@@ -58,23 +60,86 @@ def Turn(right: bool):  # TODO: check this turns correctly
             facing -= 1
     turning = False
     checkDist()
-    return None
 
 
-def forward():  # fun maths to make it go a desired distance from just the acceleration known
+def forward():  # fun maths to make it go a desired distance from just the acceleration known TODO: check it works
+    global maze, location
     startTime = time.time()
     acceleration = motion_sensor.acceleration(False)[
-        0]  # TODO: double check im getting the right one, also bool might be wrong
+        0]  # TODO: double check im getting the right one, also parameter might be wrong
     displacement = 0
     motor.stop(LeftMotor, stop=motor.BRAKE)  # TODO: make sure this works as expected
     motor.stop(RightMotor, stop=motor.BRAKE)
     velocity = 0
+    degrees = 0
     while displacement < 29:
+        color = color_sensor.color(ColorSensor)
         motor.run_for_degrees(RightMotor, 1,
                               100)  # TODO: make sure this goes forwards, not backwards. (and works as intended)
         motor.run_for_degrees(LeftMotor, 1, -100)
         velocity += (time.time() - startTime) * (acceleration * 1000 / 9.81)  # TODO: check this formula works properly
         displacement += velocity * (time.time() - startTime)
+        degrees += 1
+        if force_sensor.force(ForceSensor) > forceSensorThreshold:  # TODO: make this also check for black squares
+            print("wall encountered")
+            motor.run_for_degrees(RightMotor, degrees, -100)  # TODO: make sure this goes backwards, not forwards
+            motor.run_for_degrees(LeftMotor, degrees, 100)
+            cell = maze.getCell(location[0], location[1])
+            if facing == 0:  # TODO: make sure this works (sets wall of the cells its tried to run into)
+                upCell = maze.getCell(location[0], location[1] - 1)
+                maze.setCell(location[0], location[1], cell.color, 2, cell.southWall, cell.eastWall, cell.westWall,
+                             cell.hasBeenFound)
+                maze.setCell(location[0], location[1] - 1, upCell.color, upCell.northWall, 2, upCell.eastWall,
+                             upCell.westWall, upCell.hasBeenFound)
+            if facing == 1:
+                upCell = maze.getCell(location[0] + 1, location[1])
+                maze.setCell(location[0], location[1], cell.color, cell.northWall, cell.southWall, 2, cell.westWall,
+                             cell.hasBeenFound)
+                maze.setCell(location[0], location[1] - 1, upCell.color, upCell.northWall, cell.southWall,
+                             upCell.eastWall, 2, upCell.hasBeenFound)
+            if facing == 2:
+                upCell = maze.getCell(location[0], location[1] + 1)
+                maze.setCell(location[0], location[1], cell.color, cell.northWall, 2, cell.eastWall, cell.westWall,
+                             cell.hasBeenFound)
+                maze.setCell(location[0], location[1] - 1, upCell.color, 2, cell.southWall, upCell.eastWall,
+                             upCell.westWall, upCell.hasBeenFound)
+            if facing == 3:
+                upCell = maze.getCell(location[0] - 1, location[1])
+                maze.setCell(location[0], location[1], cell.color, cell.northWall, cell.southWall, cell.eastWall, 2,
+                             cell.hasBeenFound)
+                maze.setCell(location[0], location[1] - 1, upCell.color, upCell.northWall, 2, upCell.eastWall,
+                             upCell.westWall, upCell.hasBeenFound)
+            return
+        if color == 0:
+            print("black cell encountered")
+            motor.run_for_degrees(RightMotor, degrees, -100)  # TODO: make sure this goes backwards, not forwards
+            motor.run_for_degrees(LeftMotor, degrees, 100)
+            if facing == 0:
+                cell = maze.getCell(location[0], location[1] - 1)
+                maze.setCell(location[0], location[1] - 1, 0, cell.northWall, cell.southWall, cell.eastWall,
+                             cell.westWall, True)
+            if facing == 1:
+                cell = maze.getCell(location[0] + 1, location[1])
+                maze.setCell(location[0] + 1, location[1], 0, cell.northWall, cell.southWall, cell.eastWall,
+                             cell.westWall, True)
+            if facing == 2:
+                cell = maze.getCell(location[0], location[1] + 1)
+                maze.setCell(location[0], location[1] + 1, 0, cell.northWall, cell.southWall, cell.eastWall,
+                             cell.westWall, True)
+            if facing == 3:
+                cell = maze.getCell(location[0] - 1, location[1])
+                maze.setCell(location[0] - 1, location[1], 0, cell.northWall, cell.southWall, cell.eastWall,
+                             cell.westWall, True)
+            return
+    if facing == 0:
+        location = (location[0], location[1] - 1)
+    elif facing == 1:
+        location = (location[0] + 1, location[1])
+    elif facing == 2:
+        location = (location[0], location[1] + 1)
+    else:
+        location = (location[0] - 1, location[1])
+    return
 
 
 def angle() -> float:
@@ -84,32 +149,44 @@ def angle() -> float:
     # TODO: check that this actually works
 
 
-def checked_forward():
-    forward()
-
-
 def process_square():
     global maze, location, facing, turning
-    # fetch data
     _color = color_sensor.color(ColorSensor)
     _reflection = color_sensor.reflection(ColorSensor)
-    cell = Cell.default()
+
+    cell = maze.getCell(location[0], location[1])
+    if cell.hasBeenFound:
+        return  # confirming we haven't already looked at this cell
     cell.hasBeenFound = True
+
     # Check the color of the square
     if _color == 10:
         if _reflection > regular_white_max_reflected:
             # silver
-            print("silver")
             cell.color = 2
         else:
             # white
-            print("white")
             cell.color = 0
-
     elif _color == 0:
         # black
-        print("black")
-        cell.color = 1
+        cell.color = 1  # NOTE: not really sure why we need this, we will never be processing a black square, hopefully
+
+    # look at walls
+    walls = [cell.northWall, cell.eastWall, cell.southWall, cell.westWall]
+    for i in range(len(walls)):
+        if walls[i] == 2:
+            continue
+        else:
+            if facing == i:
+                checkWall()
+            else:
+                if facing == 3 and i == 0:
+                    Turn(True)
+                    checkWall()
+                    continue
+                elif facing == 0 and i == 3:
+                    Turn(False)
+                    checkWall()
 
 
 class Cell:
@@ -157,7 +234,6 @@ class Path:
         self.currentCell = maze.getCell(self.cells[self.length][0], self.cells[self.length][1])
 
     def cull(self):
-        indexOfLatestJunction = 0
         for _i in range(len(self.instructions)):
             v = len(self.instructions) - _i - 1
             if self.instructions[v][0] == "X":
@@ -236,7 +312,8 @@ class Maze:
         _options = []
         if __path.currentCell.northWall == 0 and not (__path.cells[len(__path.cells) - 1][0],
                                                       int(__path.cells[len(__path.cells) - 1][1]) - 1) in __path.cells[
-                                                                                                          :len(__path.cells) - 1]:
+                                                                                                          :len(
+                                                                                                              __path.cells) - 1]:
             if len(__path.instructions) > 0 and __path.instructions[len(__path.instructions) - 1] != "2" and \
                     __path.instructions[len(__path.instructions) - 1] != "X2":
                 if location[1] > 0 and maze.getCell(__path.cells[len(__path.cells) - 1][0],
@@ -254,7 +331,8 @@ class Maze:
                     _options.append(0)
         if __path.currentCell.southWall == 0 and not (__path.cells[len(__path.cells) - 1][0],
                                                       int(__path.cells[len(__path.cells) - 1][1]) + 1) in __path.cells[
-                                                                                                          :len(__path.cells) - 1]:
+                                                                                                          :len(
+                                                                                                              __path.cells) - 1]:
             if len(__path.instructions) > 0 and __path.instructions[len(__path.instructions) - 1] != "0" and \
                     __path.instructions[len(__path.instructions) - 1] != "X0":
                 if location[1] < maze.height - 1 and maze.getCell(__path.cells[len(__path.cells) - 1][0],
@@ -326,7 +404,6 @@ class Maze:
                 print("No path found.")
                 break
             print(str(path.cells))
-            currentCell = maze.getCell((path.cells[len(path.cells) - 1])[0], (path.cells[len(path.cells) - 1])[1])
             desiredDirection1 = 0  # --> the first direction we want to go. Will always be vertical, unless at the same y coord as the target.
             desiredDirection2 = 1  # --> 2nd priority. For example, if going up and right, will be right(1).
 
@@ -414,7 +491,7 @@ def checkWall():
         return False
 
     iterations = 0
-    while hi() == False:
+    while not hi():
         time.sleep(0.1)
         motor.run_for_degrees(LeftMotor, 100, -20)  # TODO: check this goes forward
         motor.run_for_degrees(RightMotor, 100, 20)
@@ -431,7 +508,7 @@ def checkDist():
         return
     dist = float(distance_sensor.distance(DistanceSensor) / 10) - 17  # TODO: adjust this value
     if dist != -1 and dist % 30 < distanceSensorTolerance:
-        wallDist = dist / 30
+        wallDist = round(dist / 30)
         if facing == 0:
             cords = (location[0], location[1] - wallDist)  # coordinates for use in the maze.getCell func
             heightVal = (maze.height - location[
@@ -440,36 +517,40 @@ def checkDist():
                 for i in range(heightVal - maze.height):
                     maze.expand(0)
             cell = maze.getCell(cords[0], cords[1])
+            upCell = maze.getCell(cords[0], cords[1] - 1)
             if not cell.hasBeenFound:
                 maze.setCell(cords[0], cords[1], cell.color, 1, cell.southWall, cell.eastWall, cell.westWall, False)
                 if heightVal + 1 > maze.height:  # extra cell above, we can set the south wall of that one while we're at it
-                    maze.setCell(cords[0], cords[1] - 1, cell.color, cell.northWall, 1, cell.eastWall, cell.westWall,
+                    maze.setCell(cords[0], cords[1] - 1, upCell.color, upCell.northWall, 1, upCell.eastWall,
+                                 upCell.westWall,
                                  False)
         if facing == 1:
             cords = (location[0] + wallDist, location[1])  # coordinates for use in the maze.getCell func
-            widthVal = location[
-                           0] + wallDist + 1  # regular x value, starting at 1 (useful for comparisons with maze.width)
+            widthVal = location[0] + wallDist + 1  # regular x value, starting at 1 (useful for comparisons with maze.width)
             if widthVal > maze.width:  # maze needs expansion to fit the seen distance.
                 for i in range(widthVal - maze.width):
                     maze.expand(1)
             cell = maze.getCell(cords[0], cords[1])
+            rightCell = maze.getCell(cords[0] + 1, cords[1])
             if not cell.hasBeenFound:
                 maze.setCell(cords[0], cords[1], cell.color, cell.northWall, cell.southWall, 1, cell.westWall, False)
                 if widthVal + 1 <= maze.width:  # extra cell to the right, we can set the west wall of that one while we're at it
-                    maze.setCell(cords[0], cords[1] - 1, cell.color, cell.northWall, cell.southWall, cell.eastWall, 1,
+                    maze.setCell(cords[0], cords[1] - 1, rightCell.color, rightCell.northWall, rightCell.southWall,
+                                 rightCell.eastWall, 1,
                                  False)
         if facing == 2:
             cords = (location[0], location[1] + wallDist)  # coordinates for use in the maze.getCell func
-            heightVal = (maze.height - location[
-                1]) - wallDist  # regular y value, starting at 1 (useful for comparisons with maze.height)
+            heightVal = (maze.height - location[1]) - wallDist  # regular y value, starting at 1 (useful for comparisons with maze.height)
             if heightVal < 1:  # maze needs expansion to fit the seen distance.
                 for i in range(-heightVal + 1):
                     maze.expand(2)
             cell = maze.getCell(cords[0], cords[1])
+            downCell = maze.getCell(cords[0], cords[1] + 1)
             if not cell.hasBeenFound:
                 maze.setCell(cords[0], cords[1], cell.color, cell.northWall, 1, cell.eastWall, cell.westWall, False)
                 if heightVal - 1 >= 1:  # extra cell below, we can set the north wall of that one while we're at it
-                    maze.setCell(cords[0], cords[1] + 1, cell.color, 1, cell.southWall, cell.eastWall, cell.westWall,
+                    maze.setCell(cords[0], cords[1] + 1, downCell.color, 1, downCell.southWall, downCell.eastWall,
+                                 downCell.westWall,
                                  False)
         if facing == 3:
             cords = (location[0] - wallDist, location[1])  # coordinates for use in the maze.getCell func
@@ -479,10 +560,12 @@ def checkDist():
                 for i in range(-widthVal + 1):
                     maze.expand(3)
             cell = maze.getCell(cords[0], cords[1])
+            leftCell = maze.getCell(cords[0] - 1, cords[1])
             if not cell.hasBeenFound:
                 maze.setCell(cords[0], cords[1], cell.color, cell.northWall, cell.southWall, cell.eastWall, 1, False)
                 if widthVal - 1 >= 1:  # extra cell to the left, we can set the east wall of that one while we're at it
-                    maze.setCell(cords[0], cords[1] - 1, cell.color, cell.northWall, cell.southWall, 1, cell.westWall,
+                    maze.setCell(cords[0], cords[1] - 1, leftCell.color, leftCell.northWall, leftCell.southWall, 1,
+                                 leftCell.westWall,
                                  False)
 
 
@@ -513,7 +596,7 @@ async def main():  # the main code loop
         for col in range(len(maze.cells[row])):
             cell = maze.cells[row][col]
             if not cell.hasBeenFound:
-                undiscovereds[cell] = len(maze.pathFind((location), (row, col)).instructions)
+                undiscovereds[cell] = len(maze.pathFind(location, (row, col)).instructions)
     currentTarget: tuple = ((0, 0), 200)
     for i in undiscovereds:
         if undiscovereds[i] < currentTarget[1]:
@@ -618,10 +701,11 @@ async def main():  # the main code loop
         elif facing == 1:
             if undiscoveredWalls.__contains__(1):
                 Turn(False)
-                await checkWall()
+                checkWall()  # TODO: make sure it waits for this (should be fine)
                 Turn(False)
             else:
                 Turn(True)
+                checkWall()
                 Turn(True)
         elif facing == 2:
             Turn(True)
