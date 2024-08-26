@@ -1,5 +1,5 @@
 # noinspection PyUnresolvedReferences
-from hub import port, motion_sensor, button, sound
+from hub import port, motion_sensor, sound
 # noinspection PyUnresolvedReferences
 import motor, distance_sensor, color_sensor, runloop, force_sensor, time, motor_pair
 
@@ -47,7 +47,7 @@ def Turn(right: bool):
             diff += 360
         return abs(diff)
 
-    checkDist()
+    # checkDist()
 
     if right:
         while tempDir < 90:
@@ -65,7 +65,7 @@ def Turn(right: bool):
             facing = 3
 
     turning = False
-    checkDist()
+    # checkDist()
 
 
 def forward():  # fun maths to make it go a desired distance from just the acceleration known TODO: check it works
@@ -152,11 +152,7 @@ def process_square():  # TODO: make it look for colored victims as it does this
     _reflection = color_sensor.reflection(ColorSensor)
 
     cell = maze.getCell(location[0], location[1])
-    cell.hasBeenFound = True
     if cell.hasBeenFound:
-        cell = Cell(0, [0, 0, 0, 0], True)
-        maze.setCell(location[0], location[1], cell.color, cell.northWall, cell.southWall, cell.eastWall, cell.westWall,
-                     cell.hasBeenFound)
         print("cell already processed")
         return  # confirming we haven't already looked at this cell
     cell.hasBeenFound = True
@@ -342,7 +338,7 @@ class Maze:
     @staticmethod
     def getOptions(__path: Path) -> list:
         _options = []
-
+        location = __path.cells[len(__path.cells) - 1]
         if __path.currentCell.northWall == 0 and not (__path.cells[len(__path.cells) - 1][0],
                                                       int(__path.cells[len(__path.cells) - 1][1]) - 1) in __path.cells[
                                                                                                           :len(__path.cells) - 1]:
@@ -498,7 +494,34 @@ def correct(_direction: int):
 
 def checkWall():
     def hi() -> bool:
-        return force_sensor.raw(ForceSensor) > 457
+        if force_sensor.raw(ForceSensor) > 457:
+            cell = maze.getCell(location[0], location[1])
+            if facing == 0:
+                maze.setCell(location[0], location[1], cell.color, 2, cell.southWall, cell.eastWall, cell.westWall,
+                             cell.hasBeenFound)
+                cell = maze.getCell(location[0], location[1] - 1)
+                maze.setCell(location[0], location[1] - 1, cell.color, cell.northWall, 1, cell.eastWall, cell.westWall,
+                             cell.hasBeenFound)
+            if facing == 1:
+                maze.setCell(location[0], location[1], cell.color, cell.northWall, cell.southWall, 2, cell.westWall,
+                             cell.hasBeenFound)
+                cell = maze.getCell(location[0] + 1, location[1])
+                maze.setCell(location[0] + 1, location[1], cell.color, cell.northWall, cell.southWall, 1, cell.westWall,
+                             cell.hasBeenFound)
+            if facing == 2:
+                maze.setCell(location[0], location[1], cell.color, cell.northWall, 2, cell.eastWall, cell.westWall,
+                             cell.hasBeenFound)
+                cell = maze.getCell(location[0], location[1] + 1)
+                maze.setCell(location[0], location[1] + 1, cell.color, 1, cell.southWall, cell.eastWall, cell.westWall,
+                             cell.hasBeenFound)
+            if facing == 3:
+                maze.setCell(location[0], location[1], cell.color, cell.northWall, cell.southWall, cell.eastWall, 2,
+                             cell.hasBeenFound)
+                cell = maze.getCell(location[0] - 1, location[1])
+                maze.setCell(location[0] - 1, location[1], cell.color, cell.northWall, cell.southWall, 1, cell.westWall,
+                             cell.hasBeenFound)
+            return True
+        return False
 
     iterations = 0
     while not hi():
@@ -603,7 +626,7 @@ async def main():  # the main code loop
     direction = angle()
     facing = 0
     pitch = round(motion_sensor.tilt_angles()[1] / 10)
-    checkDist()
+    # checkDist()
 
     # find and go to next cell
     process_square()
@@ -612,7 +635,7 @@ async def main():  # the main code loop
         for col in range(len(maze.cells[row])):
             cell = maze.cells[row][col]
             if not cell.hasBeenFound:
-                undiscovereds[cell] = len(maze.pathFind(location, (col, row)).instructions)
+                undiscovereds[(col, row)] = len(maze.pathFind(location, (col, row)).instructions)
     currentTarget: tuple = ((0, 0), 200)
     print(undiscovereds)
     if len(undiscovereds) == 0:
@@ -685,7 +708,7 @@ async def main():  # the main code loop
         if facing == 1:
             Turn(False)
         elif facing == 2:
-            if undiscoveredWalls.__contains__(1):
+            if 1 in undiscoveredWalls:
                 Turn(False)
                 Turn(False)
             else:
@@ -711,7 +734,7 @@ async def main():  # the main code loop
         if facing == 2:
             Turn(False)
         elif facing == 3:
-            if undiscoveredWalls.__contains__(1):
+            if 1 in undiscoveredWalls:
                 Turn(False)
                 Turn(False)
             else:
@@ -737,7 +760,7 @@ async def main():  # the main code loop
         if facing == 3:
             Turn(False)
         elif facing == 0:
-            if undiscoveredWalls.__contains__(1):
+            if 1 in undiscoveredWalls:
                 Turn(False)
                 Turn(False)
             else:
@@ -763,7 +786,7 @@ async def main():  # the main code loop
         if facing == 0:
             Turn(False)
         elif facing == 1:
-            if undiscoveredWalls.__contains__(1):
+            if 1 in undiscoveredWalls:
                 Turn(False)
                 checkWall()  # TODO: make sure it waits for this (should be fine)
                 Turn(False)
@@ -775,8 +798,10 @@ async def main():  # the main code loop
             Turn(True)
 
     forward()  # this marks the point where the robot physically enters a new cell
-    checkDist()
-    pathToTarget.cut()
+    print("WE MADE IT FORWARD!!!!")
+    print()
+    # checkDist()
+    print('idtance checked')
 
 
 def goBackToStartAndReport(_path: Path):  # TODO: check it works
